@@ -15,11 +15,13 @@
 #import <WebRTC/RTCConfiguration.h>
 #import <WebRTC/RTCIceCandidate.h>
 #import <WebRTC/RTCIceServer.h>
+#import <WebRTC/RTCRtpSender.h>
 #import <WebRTC/RTCMediaConstraints.h>
 #import <WebRTC/RTCIceCandidate.h>
 #import <WebRTC/RTCSessionDescription.h>
 #import <WebRTC/RTCStatisticsReport.h>
 #import <WebRTC/RTCRtpTransceiver.h>
+#import <WebRTC/RTCLegacyStatsReport.h>
 
 #import "WebRTCModule.h"
 #import "WebRTCModule+RTCDataChannel.h"
@@ -141,6 +143,28 @@ RCT_EXPORT_METHOD(peerConnectionRemoveStream:(nonnull NSString *)streamID object
   [peerConnection removeStream:stream];
 }
 
+RCT_EXPORT_METHOD(peerConnectionAddTrack:(nonnull NSString *)streamID
+                  trackId:(nonnull NSString *)trackId
+                  objectID:(nonnull NSNumber *)objectID)
+{
+  RTCPeerConnection *peerConnection = self.peerConnections[objectID];
+  if (!peerConnection) {
+    RCTLogWarn(@"peerConnectionAddTrack - peerConnection not found, id: %@", objectID)
+    return;
+  }
+  RTCMediaStream *stream = self.localStreams[streamID];
+  if (!stream) {
+    RCTLogWarn(@"peerConnectionAddTrack - stream not found, id: %@", stream.streamId)
+    return;
+  }
+  RTCMediaStreamTrack* track = [self trackForId:trackId];
+
+  RTCRtpSender *sender = [peerConnection addTrack:track streamIds:@[stream.streamId]];
+  if (!sender) {
+    RCTLogWarn(@"peerConnectionAddTrack - failed to receive sender")
+  }
+}
+
 RCT_EXPORT_METHOD(peerConnectionAddTransceiver:(nonnull NSNumber *)objectID
                                        options:(NSDictionary *)options
                                       callback:(RCTResponseSenderBlock)callback)
@@ -195,8 +219,10 @@ RCT_EXPORT_METHOD(peerConnectionTransceiverSetDirection:(nonnull NSNumber *)obje
      return;
    }
    for (RTCRtpTransceiver *transceiver in peerConnection.transceivers) {
+     
+       NSError* directionError = nil;
        if ([transceiver.sender.senderId isEqualToString:transceiverId]) {
-           [transceiver setDirection:[self parseDirection:direction]];
+           [transceiver setDirection:[self parseDirection:direction] error:&directionError ];
        }
    }
     id response = @{
@@ -239,7 +265,7 @@ RCT_EXPORT_METHOD(peerConnectionTransceiverStop:(nonnull NSNumber *)objectID
    }
    for (RTCRtpTransceiver *transceiver in peerConnection.transceivers) {
        if ([transceiver.sender.senderId isEqualToString:transceiverId]) {
-           [transceiver stop];
+           [transceiver stopInternal];
        }
    }
     id response = @{

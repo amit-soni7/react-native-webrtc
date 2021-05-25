@@ -1,21 +1,22 @@
 'use strict';
 
-import EventTarget from 'event-target-shim';
-import { NativeModules, NativeEventEmitter } from 'react-native';
+import * as RTCUtil from './RTCUtil';
 
+import { NativeEventEmitter, NativeModules } from 'react-native';
+
+import EventEmitter from './EventEmitter';
+import EventTarget from 'event-target-shim';
 import MediaStream from './MediaStream';
 import MediaStreamEvent from './MediaStreamEvent';
 import MediaStreamTrack from './MediaStreamTrack';
 import MediaStreamTrackEvent from './MediaStreamTrackEvent';
 import RTCDataChannel from './RTCDataChannel';
 import RTCDataChannelEvent from './RTCDataChannelEvent';
-import RTCSessionDescription from './RTCSessionDescription';
+import RTCEvent from './RTCEvent';
 import RTCIceCandidate from './RTCIceCandidate';
 import RTCIceCandidateEvent from './RTCIceCandidateEvent';
-import RTCEvent from './RTCEvent';
 import RTCRtpTransceiver from './RTCRtpTransceiver';
-import * as RTCUtil from './RTCUtil';
-import EventEmitter from './EventEmitter';
+import RTCSessionDescription from './RTCSessionDescription';
 
 const {WebRTCModule} = NativeModules;
 
@@ -88,6 +89,7 @@ export default class RTCPeerConnection extends EventTarget(PEER_CONNECTION_EVENT
 
   _peerConnectionId: number;
   _localStreams: Array<MediaStream> = [];
+  _localTracks: Array<MediaStreamTrack> = [];
   _remoteStreams: Array<MediaStream> = [];
   _subscriptions: Array<any>;
   _transceivers: Array<RTCRtpTransceiver> = [];
@@ -121,18 +123,15 @@ export default class RTCPeerConnection extends EventTarget(PEER_CONNECTION_EVENT
       this._localStreams.splice(index, 1);
       WebRTCModule.peerConnectionRemoveStream(stream._reactTag, this._peerConnectionId);
   }
+  
+  addTrack(track: MediaStreamTrack, stream: MediaStream) {
+    WebRTCModule.peerConnectionAddTrack(stream._reactTag, track.id, this._peerConnectionId);
+    this._localTracks.push(track);
+  }
 
-  addTransceiver(source: 'audio' |'video' | MediaStreamTrack, init) {
+  addTransceiver(track, init) {
     return new Promise((resolve, reject) => {
-
-      let src;
-      if (source === 'audio') {
-        src = { type: 'audio' };
-      } else if (source === 'video') {
-        src = { type: 'video' };
-      } else {
-        src = { trackId: track.id };
-      }
+      const src = { trackId: track.id };
 
       WebRTCModule.peerConnectionAddTransceiver(this._peerConnectionId, {...src, init: { ...init } }, (successful, data) => {
         if (successful) {
