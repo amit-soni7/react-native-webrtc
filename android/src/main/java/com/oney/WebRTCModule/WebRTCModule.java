@@ -1,7 +1,6 @@
 package com.oney.WebRTCModule;
 
-import androidx.annotation.Nullable;
-
+import android.support.annotation.Nullable;
 import android.util.Log;
 import android.util.SparseArray;
 
@@ -20,16 +19,37 @@ import com.facebook.react.bridge.WritableMap;
 import com.facebook.react.module.annotations.ReactModule;
 import com.facebook.react.modules.core.DeviceEventManagerModule;
 
+import org.webrtc.AudioTrack;
+import org.webrtc.DefaultVideoDecoderFactory;
+import org.webrtc.DefaultVideoEncoderFactory;
+import org.webrtc.EglBase;
+import org.webrtc.IceCandidate;
+import org.webrtc.Loggable;
+import org.webrtc.Logging;
+import org.webrtc.MediaConstraints;
+import org.webrtc.MediaStream;
+import org.webrtc.MediaStreamTrack;
+import org.webrtc.PeerConnection;
+import org.webrtc.PeerConnectionFactory;
+import org.webrtc.RtpReceiver;
+import org.webrtc.RtpSender;
+import org.webrtc.RtpTransceiver;
+import org.webrtc.SdpObserver;
+import org.webrtc.SessionDescription;
+import org.webrtc.SoftwareVideoDecoderFactory;
+import org.webrtc.SoftwareVideoEncoderFactory;
+import org.webrtc.StatsReport;
+import org.webrtc.VideoDecoderFactory;
+import org.webrtc.VideoEncoderFactory;
+import org.webrtc.VideoTrack;
+import org.webrtc.audio.AudioDeviceModule;
+import org.webrtc.audio.JavaAudioDeviceModule;
+
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
-
-import org.webrtc.*;
-import org.webrtc.audio.AudioDeviceModule;
-import org.webrtc.audio.JavaAudioDeviceModule;
 
 @ReactModule(name = "WebRTCModule")
 public class WebRTCModule extends ReactContextBaseJavaModule {
@@ -406,9 +426,11 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
             if (v != null) {
                 switch (v) {
                     case "unified-plan":
+                        Log.d(TAG, "Using Unified Plan semantics");
                         conf.sdpSemantics = PeerConnection.SdpSemantics.UNIFIED_PLAN;
                         break;
                     case "plan-b":
+                        Log.d(TAG, "Using Plan B semantics");
                         conf.sdpSemantics = PeerConnection.SdpSemantics.PLAN_B;
                 }
 
@@ -676,6 +698,7 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
                 peerConnectionAddStreamAsync(streamId, id));
     }
 
+
     private void peerConnectionAddStreamAsync(String streamId, int id) {
         MediaStream mediaStream = localStreams.get(streamId);
         if (mediaStream == null) {
@@ -687,6 +710,38 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
             Log.e(TAG, "peerConnectionAddStream() failed");
         }
     }
+
+    @ReactMethod
+    public void peerConnectionAddTrack(String streamId, String trackId, int id) {
+        ThreadUtils.runOnExecutor(() ->
+                peerConnectionAddTrackAsync(streamId, trackId, id));
+    }
+
+    private void peerConnectionAddTrackAsync(String streamId, String trackId, int id) {
+        MediaStream mediaStream = localStreams.get(streamId);
+        if (mediaStream == null) {
+            Log.d(TAG, "peerConnectionAddTrack() mediaStream is null");
+            return;
+        }
+
+        MediaStreamTrack track = getLocalTrack(trackId);
+        if (track == null) {
+            Log.d(TAG, "peerConnectionAddTrack() track is null");
+        }
+
+        PeerConnectionObserver pco = mPeerConnectionObservers.get(id);
+        if (pco == null) {
+            Log.e(TAG, "peerConnectionAddTrack() observer is null");
+            return;
+        }
+        // TODO: add serialization to state just like it is done with transceiver
+        String senderId = pco.addTrack(track, mediaStream);
+        if (senderId == null) {
+            Log.e(TAG, "peerConnectionAddTrack() failed to add track");
+        }
+    }
+
+
 
     @ReactMethod
     public void peerConnectionRemoveStream(String streamId, int id) {
@@ -706,7 +761,7 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
         }
     }
 
-    private ReadableMap serializeState(int id) {
+    private WritableMap serializeState(int id) {
         PeerConnection peerConnection = getPeerConnection(id);
         PeerConnectionObserver pco = mPeerConnectionObservers.get(id);
         WritableArray transceivers = Arguments.createArray();
@@ -924,9 +979,10 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
         boolean result = false;
         PeerConnection peerConnection = getPeerConnection(id);
         Log.d(TAG, "peerConnectionAddICECandidate() start");
+
         if (peerConnection != null) {
             IceCandidate candidate = new IceCandidate(
-                    candidateMap.getString("sdpMid"),
+                    candidateMap.hasKey("sdpMid") ? candidateMap.getString("sdpMid") : "",
                     candidateMap.getInt("sdpMLineIndex"),
                     candidateMap.getString("candidate")
             );
@@ -997,9 +1053,9 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
     }
 
     @ReactMethod
-    public void peerConnectionGetStats(String trackId, int id, Callback cb) {
+    public void peerConnectionGetStats(int id, Promise cb) {
         ThreadUtils.runOnExecutor(() ->
-                peerConnectionGetStatsAsync(trackId, id, cb));
+                peerConnectionGetStatsAsync(id, cb));
     }
 
     private void peerConnectionGetStatsAsync(int peerConnectionId,
@@ -1148,7 +1204,7 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
         return new RtpTransceiver.RtpTransceiverInit(direction, streamIds);
     }
 
-    private ReadableMap serializeTrack(MediaStreamTrack track) {
+    private WritableMap serializeTrack(MediaStreamTrack track) {
         WritableMap trackInfo = Arguments.createMap();
         trackInfo.putString("id", track.id());
         if (track.kind().equals("video")) {
@@ -1165,14 +1221,14 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
         return trackInfo;
     }
 
-    private ReadableMap serializeReceiver(RtpReceiver receiver) {
+    private WritableMap serializeReceiver(RtpReceiver receiver) {
         WritableMap res = Arguments.createMap();
         res.putString("id", receiver.id());
         res.putMap("track", serializeTrack(receiver.track()));
         return res;
     }
 
-    private ReadableMap serializeTransceiver(String id, RtpTransceiver transceiver) {
+    private WritableMap serializeTransceiver(String id, RtpTransceiver transceiver) {
         WritableMap res = Arguments.createMap();
         res.putString("id", id);
         String mid = transceiver.getMid();

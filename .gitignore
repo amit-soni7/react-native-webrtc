@@ -5,6 +5,11 @@ xcuserdata
 project.xcworkspace
 .DS_Store
 .idea
+local.properties
+.gradle
+gradle
+gradlew
+gradlew.bat
 android/build
 Podfile.lock
 WebRTC.xcframework

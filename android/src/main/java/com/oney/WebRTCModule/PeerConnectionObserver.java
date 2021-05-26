@@ -30,6 +30,7 @@ import org.webrtc.MediaStream;
 import org.webrtc.MediaStreamTrack;
 import org.webrtc.PeerConnection;
 import org.webrtc.RtpReceiver;
+import org.webrtc.RtpSender;
 import org.webrtc.RtpTransceiver;
 import org.webrtc.StatsObserver;
 import org.webrtc.StatsReport;
@@ -114,6 +115,14 @@ class PeerConnectionObserver implements PeerConnection.Observer {
         return localStreams.remove(localStream);
     }
 
+    String addTrack(MediaStreamTrack track, MediaStream stream) {
+        List<String> streamIds = new ArrayList<>();
+        streamIds.add(stream.getId());
+
+        List<RtpSender> senders = peerConnection.getSenders();
+        return resolveSenderId(peerConnection.addTrack(track, streamIds));
+    }
+
     String addTransceiver(MediaStreamTrack.MediaType mediaType, RtpTransceiver.RtpTransceiverInit init) {
         if (peerConnection == null) {
             throw new Error("Impossible");
@@ -132,6 +141,13 @@ class PeerConnectionObserver implements PeerConnection.Observer {
 
     String resolveTransceiverId(RtpTransceiver transceiver) {
         return transceiver.getSender().id();
+    }
+
+    String resolveSenderId(RtpSender sender) {
+        if (sender != null) {
+            return sender.id();
+        }
+        return null;
     }
 
     RtpTransceiver getTransceiver(String id) {
