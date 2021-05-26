@@ -149,19 +149,19 @@ RCT_EXPORT_METHOD(peerConnectionAddTrack:(nonnull NSString *)streamID
 {
   RTCPeerConnection *peerConnection = self.peerConnections[objectID];
   if (!peerConnection) {
-    RCTLogWarn(@"peerConnectionAddTrack - peerConnection not found, id: %@", objectID)
+    RCTLogWarn(@"peerConnectionAddTrack - peerConnection not found, id: %@", objectID);
     return;
   }
   RTCMediaStream *stream = self.localStreams[streamID];
   if (!stream) {
-    RCTLogWarn(@"peerConnectionAddTrack - stream not found, id: %@", stream.streamId)
+    RCTLogWarn(@"peerConnectionAddTrack - stream not found, id: %@", stream.streamId);
     return;
   }
   RTCMediaStreamTrack* track = [self trackForId:trackId];
 
   RTCRtpSender *sender = [peerConnection addTrack:track streamIds:@[stream.streamId]];
   if (!sender) {
-    RCTLogWarn(@"peerConnectionAddTrack - failed to receive sender")
+    RCTLogWarn(@"peerConnectionAddTrack - failed to receive sender");
   }
 }
 
