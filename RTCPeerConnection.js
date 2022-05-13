@@ -337,8 +337,7 @@ return new Promise((resolve, reject) => {
   getTransceivers() {
     return this._transceivers.slice();
   }
-
-
+  
   close() {
     WebRTCModule.peerConnectionClose(this._peerConnectionId);
   }

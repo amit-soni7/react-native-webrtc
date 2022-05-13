@@ -731,7 +731,6 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
             //Find whether the track has a corresponding (RtpSender)
             String addTrackId = mediaStreamTrack.id(); RtpSender sender = null;
             for(RtpSender rtpSender : pco.getPeerConnection().getSenders()){
-                Log.d("rtpSender",rtpSender);
                 if(rtpSender.track() != null){
                     if(rtpSender.track().id().equalsIgnoreCase(addTrackId)){
                         sender = rtpSender;
@@ -777,7 +776,7 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
             }
         } catch (Exception e) {
             callback.invoke(false,"add track failed");
-            Log.e(TAG, "peerConnectionAddTrack() failed to add Track")
+            Log.e(TAG, "peerConnectionAddTrack() failed to add Track");
         }
       }
 
@@ -852,8 +851,6 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
             callback.invoke(false, "pco == null");
         }
     }
-
-
 
 
     @ReactMethod
