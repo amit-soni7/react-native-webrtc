@@ -712,34 +712,147 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
     }
 
     @ReactMethod
-    public void peerConnectionAddTrack(String streamId, String trackId, int id) {
+    public void peerConnectionAddTrack(String trackId, int id, Callback callback) {
         ThreadUtils.runOnExecutor(() ->
-                peerConnectionAddTrackAsync(streamId, trackId, id));
+                peerConnectionAddTrackAsync(trackId, id, callback));
     }
 
-    private void peerConnectionAddTrackAsync(String streamId, String trackId, int id) {
-        MediaStream mediaStream = localStreams.get(streamId);
-        if (mediaStream == null) {
-            Log.d(TAG, "peerConnectionAddTrack() mediaStream is null");
+    private void peerConnectionAddTrackAsync(String trackId, int id, Callback callback) {
+      PeerConnectionObserver pco = mPeerConnectionObservers.get(id);
+
+      if(pco != null){
+        //check only locaktracks could be added 
+        MediaStreamTrack mediaStreamTrack = getLocalTrack(trackId);
+        if (mediaStreamTrack == null) {
+            Log.d(TAG, "peerConnectionAddTrack() mediaStreamTrack is null(local)");
             return;
         }
+        try {
+            //Find whether the track has a corresponding (RtpSender)
+            String addTrackId = mediaStreamTrack.id(); RtpSender sender = null;
+            for(RtpSender rtpSender : pco.getPeerConnection().getSenders()){
+                Log.d("rtpSender",rtpSender);
+                if(rtpSender.track() != null){
+                    if(rtpSender.track().id().equalsIgnoreCase(addTrackId)){
+                        sender = rtpSender;
+                        break;
+                    }
+                }
+            }
+            if(sender == null){
+                //If a transceiver is not created, add a track, if there is a transceiver, add the track to RtpSender
+                if(pco.getPeerConnection().getTransceivers().size() <= 0){
+                    sender = pco.addTrack(mediaStreamTrack);
+                }else {
+                    for (RtpTransceiver transceiver : pco.getPeerConnection().getTransceivers()){
+                        if(transceiver.getReceiver().track() != null){
+                            if(transceiver.getSender().track() == null && transceiver.getReceiver().track().kind().equalsIgnoreCase(mediaStreamTrack.kind())){
+                                transceiver.getSender().setTrack(mediaStreamTrack,false);
+                                transceiver.setDirection(RtpTransceiver.RtpTransceiverDirection.SEND_RECV);
+                                sender = transceiver.getSender();
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+            if(sender != null){
+                WritableMap map = Arguments.createMap();
+                WritableMap subMap = Arguments.createMap();
+                map.putString("id", sender.id());
 
-        MediaStreamTrack track = getLocalTrack(trackId);
-        if (track == null) {
-            Log.d(TAG, "peerConnectionAddTrack() track is null");
+
+                subMap.putString("id", sender.track().id());
+                subMap.putString("kind", sender.track().kind());
+                subMap.putString("readyState", (sender.track().state() == MediaStreamTrack.State.LIVE)?"live":"ended");
+                subMap.putBoolean("enabled", sender.track().enabled());
+                subMap .putBoolean ( "remote" , false ); //Only local track can be added , and the remote track RTC is automatically added to the transceiver (in RtpReceiver)
+
+                map.putMap("track", subMap);
+
+                callback.invoke(true, map);
+            }else {
+                callback.invoke(false,"add track failed");
+                Log.e(TAG, "peerConnectionAddTrack() failed");
+            }
+        } catch (Exception e) {
+            callback.invoke(false,"add track failed");
+            Log.e(TAG, "peerConnectionAddTrack() failed to add Track")
         }
+      }
 
+    }
+
+    @ReactMethod
+    public void peerConnectionRemoveTrack(String senderId, int id, Callback callback) {
+        ThreadUtils.runOnExecutor(() ->
+                peerConnectionRemoveTrackAsync(senderId, id, callback));
+    }
+
+    private void peerConnectionRemoveTrackAsync(String senderId, int id, Callback callback) {
         PeerConnectionObserver pco = mPeerConnectionObservers.get(id);
-        if (pco == null) {
-            Log.e(TAG, "peerConnectionAddTrack() observer is null");
-            return;
-        }
-        // TODO: add serialization to state just like it is done with transceiver
-        String senderId = pco.addTrack(track, mediaStream);
-        if (senderId == null) {
-            Log.e(TAG, "peerConnectionAddTrack() failed to add track");
+        RtpSender rtpSender = null;
+
+        if(pco != null){
+            for (int i = 0; i < pco.getPeerConnection().getSenders().size(); i++) {
+                if(pco.getPeerConnection().getSenders().get(i).id().equalsIgnoreCase(senderId)){
+                    rtpSender = pco.getPeerConnection().getSenders().get(i);
+                    break;
+                }
+            }
+
+            if(rtpSender != null){
+                boolean result = pco.removeTrack(rtpSender);
+                if(result == true){
+                    callback.invoke(true);
+                }else {
+                    Log.e(TAG, "peerConnectionRemoveTrack() failed");
+                    callback.invoke(false, "peerConnectionRemoveTrack() failed");
+                }
+            }else {
+                Log.e(TAG, "peerConnectionRemoveTrack() rtpSender is null");
+                callback.invoke(false, "rtpSender == null");
+            }
+        }else {
+            Log.e(TAG, "peerConnectionRemoveTrack() failed");
+            callback.invoke(false, "pco == null");
         }
     }
+
+    @ReactMethod
+    public void peerConnectionGetRtpSenders(int id, Callback callback) {
+        ThreadUtils.runOnExecutor(() ->
+                peerConnectionGetRtpSendersAsync(id, callback));
+    }
+
+    private void peerConnectionGetRtpSendersAsync(int id, Callback callback){
+        PeerConnectionObserver pco = mPeerConnectionObservers.get(id);
+        if(pco != null){
+            WritableArray array = Arguments.createArray();
+            for (int i = 0; i < pco.getPeerConnection().getSenders().size(); i++) {
+                RtpSender sender = pco.getPeerConnection().getSenders().get(i);
+                if ( sender . track () == null ){ continue ; } // RtpSender exists because the track is removed, and MediaStreamTrack is null
+
+                WritableMap map = Arguments.createMap();
+                WritableMap subMap = Arguments.createMap();
+                map.putString("id", sender.id());
+
+                subMap.putString("id", sender.track().id());
+                subMap.putString("kind", sender.track().kind());
+                subMap.putString("readyState", (sender.track().state() == MediaStreamTrack.State.LIVE)?"live":"ended");
+                subMap.putBoolean("enabled", sender.track().enabled());
+                subMap . putBoolean ( "remote" , false );
+
+                map.putMap("track", subMap);
+                array.pushMap(map);
+            }
+            callback.invoke(true, array);
+        }else {
+            Log.e(TAG, "peerConnectionRemoveTrack() failed");
+            callback.invoke(false, "pco == null");
+        }
+    }
+
 
 
 

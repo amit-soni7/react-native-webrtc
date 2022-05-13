@@ -16,6 +16,7 @@ import RTCEvent from './RTCEvent';
 import RTCIceCandidate from './RTCIceCandidate';
 import RTCIceCandidateEvent from './RTCIceCandidateEvent';
 import RTCRtpTransceiver from './RTCRtpTransceiver';
+import RtpSender from './RtpSender';
 import RTCSessionDescription from './RTCSessionDescription';
 
 const {WebRTCModule} = NativeModules;
@@ -93,6 +94,7 @@ export default class RTCPeerConnection extends EventTarget(PEER_CONNECTION_EVENT
   _remoteStreams: Array<MediaStream> = [];
   _subscriptions: Array<any>;
   _transceivers: Array<RTCRtpTransceiver> = [];
+  _rtpSenders: Array<RtpSender> = [];
 
   /**
    * The RTCDataChannel.id allocator of this RTCPeerConnection.
@@ -124,10 +126,78 @@ export default class RTCPeerConnection extends EventTarget(PEER_CONNECTION_EVENT
       WebRTCModule.peerConnectionRemoveStream(stream._reactTag, this._peerConnectionId);
   }
   
-  addTrack(track: MediaStreamTrack, stream: MediaStream) {
-    WebRTCModule.peerConnectionAddTrack(stream._reactTag, track.id, this._peerConnectionId);
-    this._localTracks.push(track);
-  }
+  // addTrack(track: MediaStreamTrack, stream: MediaStream) {
+  //   WebRTCModule.peerConnectionAddTrack(stream._reactTag, track.id, this._peerConnectionId);
+  //   this._localTracks.push(track);
+  // }
+  addTrack(track: MediaStreamTrack) {
+    return new Promise((resolve, reject) => {
+      var sender = this._rtpSenders.find((sender)=> sender.track().id === track.id);
+      if(sender !== undefined){
+        return;
+      }
+      WebRTCModule.peerConnectionAddTrack(track.id, this._peerConnectionId,(successful, data) => {
+        if (successful) {
+          var info = {
+            id: data.track.id,
+            kind: data.track.kind,
+            label: data.track.kind,
+            enabled: data.track.enabled,
+            readyState: data.track.readyState,
+            remote: data.track.remote
+          };
+          var sender = new RtpSender(data.id, new MediaStreamTrack(info));
+          this._rtpSenders.push(sender);
+          resolve(sender);
+        } else {
+          reject(data);
+        }
+      });
+    });
+}
+
+removeTrack(sender: RtpSender) {
+  return new Promise((resolve, reject) => {
+    const index = this._rtpSenders.indexOf(sender);
+    if (index === -1) {
+        return;
+    }
+    WebRTCModule.peerConnectionRemoveTrack(sender.id(), this._peerConnectionId,(successful) => {
+      if(successful){
+        this._rtpSenders.splice(index, 1);
+      }
+      resolve(successful);
+    });
+  })
+}
+
+getRtpSenders(){
+return new Promise((resolve, reject) => {
+  WebRTCModule.peerConnectionGetRtpSenders(this._peerConnectionId,(successful, data) => {
+    if(successful){
+      this._rtpSenders.length = 0;
+
+      for (var i = 0; i < data.length; i++) {
+        var  senderOrigin  =  data [ i ] ;
+        var info = {
+          id: senderOrigin.track.id,
+          kind: senderOrigin.track.kind,
+          label: senderOrigin.track.kind,
+          enabled: senderOrigin.track.enabled,
+          readyState: senderOrigin.track.readyState,
+          remote: senderOrigin.track.remote
+        };
+        var  sender  =  new  RtpSender ( senderOrigin . id ,  new  MediaStreamTrack ( info ) ) ;
+        this._rtpSenders.push(sender);
+      }
+      resolve(this._rtpSenders);
+    }else {
+      reject(successful)
+    }
+  });
+})
+}
+
 
   addTransceiver(track, init) {
     return new Promise((resolve, reject) => {
@@ -256,9 +326,18 @@ export default class RTCPeerConnection extends EventTarget(PEER_CONNECTION_EVENT
     return this._remoteStreams.slice();
   }
 
+  getReceivers() {
+    return this.getTransceivers().map(t => t.receiver)
+  }
+
+  getSenders() {
+    return this.getTransceivers().map(t => t.sender)
+  }
+
   getTransceivers() {
     return this._transceivers.slice();
   }
+
 
   close() {
     WebRTCModule.peerConnectionClose(this._peerConnectionId);

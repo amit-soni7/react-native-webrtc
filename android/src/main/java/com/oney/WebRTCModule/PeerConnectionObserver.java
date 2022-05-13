@@ -115,12 +115,29 @@ class PeerConnectionObserver implements PeerConnection.Observer {
         return localStreams.remove(localStream);
     }
 
-    String addTrack(MediaStreamTrack track, MediaStream stream) {
-        List<String> streamIds = new ArrayList<>();
-        streamIds.add(stream.getId());
+    // String addTrack(MediaStreamTrack track, MediaStream stream) {
+    //     List<String> streamIds = new ArrayList<>();
+    //     streamIds.add(stream.getId());
 
-        List<RtpSender> senders = peerConnection.getSenders();
-        return resolveSenderId(peerConnection.addTrack(track, streamIds));
+    //     List<RtpSender> senders = peerConnection.getSenders();
+    //     return resolveSenderId(peerConnection.addTrack(track, streamIds));
+    // }
+
+    RtpSender addTrack(MediaStreamTrack mediaStreamTrack) {
+        if (peerConnection != null) {
+            RtpSender sender = peerConnection.addTrack(mediaStreamTrack);
+            return sender;
+        }
+
+        return null;
+    }
+
+    boolean removeTrack(RtpSender rtpSender) {
+        if (peerConnection != null) {
+            boolean result = peerConnection.removeTrack(rtpSender);
+            return result;
+        }
+        return false;
     }
 
     String addTransceiver(MediaStreamTrack.MediaType mediaType, RtpTransceiver.RtpTransceiverInit init) {
